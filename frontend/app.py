@@ -36,6 +36,37 @@ BACKEND_URL = "http://localhost:8000"
 _API_KEY: str | None = os.getenv("DEVHANDOFF_API_KEY") or None
 REQUEST_TIMEOUT = 600  # seconds
 
+
+def _ensure_backend_running() -> None:
+    """Auto-start FastAPI backend in background if running on cloud platforms (e.g. Streamlit Cloud)."""
+    try:
+        r = httpx.get(f"{BACKEND_URL}/health", timeout=1.2)
+        if r.status_code == 200:
+            return
+    except Exception:
+        pass
+    import subprocess
+    import sys
+    _logger.info("Auto-launching DevHandoff backend daemon...")
+    try:
+        subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "backend.main:app", "--port", "8000", "--host", "127.0.0.1"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        for _ in range(12):
+            time.sleep(0.5)
+            try:
+                if httpx.get(f"{BACKEND_URL}/health", timeout=1.0).status_code == 200:
+                    break
+            except Exception:
+                pass
+    except Exception as exc:
+        _logger.warning(f"Could not auto-start backend: {exc}")
+
+
+_ensure_backend_running()
+
 HANDOFF_SECTIONS = [
     "Context",
     "What Changed",
