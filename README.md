@@ -23,9 +23,9 @@ FastAPI Orchestrator
 │  Analyzer            Archaeologist    Drift Analyzer│
 └───────────────────────────────────────────────────┘
         ↓ (raw JSON × 3)
-LLM Summarizer — Ollama (qwen2.5-coder:14b)
+LLM Summarizer — IBM watsonx.ai (ibm/granite-3-8b-instruct)
         ↓ (plain-English summaries × 3)
-Synthesizer Agent — Ollama (final doc)
+Synthesizer Agent — IBM watsonx.ai (final doc)
         ↓
 Streamlit UI — renders 11-section Markdown document
 ```
@@ -41,7 +41,7 @@ devhandoff/
 │   ├── subagent_inflight.py     # Subagent 1: Git diff, GitHub issues, test runner
 │   ├── subagent_archaeologist.py# Subagent 2: git log + git blame archaeology
 │   ├── subagent_drift.py        # Subagent 3: AST analysis + doc drift + TODOs
-│   ├── llm_client.py            # Ollama REST client (local LLM only)
+│   ├── llm_client.py            # IBM watsonx.ai REST client
 │   └── synthesizer.py           # Final synthesis + per-section regeneration
 ├── frontend/
 │   └── app.py                   # Streamlit UI with parallel progress indicators
@@ -67,7 +67,8 @@ devhandoff/
 |------|---------|---------|
 | Python | 3.11+ | [python.org](https://python.org) |
 | Git | any | pre-installed on most systems |
-| Groq API key | free | [console.groq.com](https://console.groq.com) |
+| IBM Cloud API key | free tier | [cloud.ibm.com](https://cloud.ibm.com) |
+| watsonx.ai Project ID | free tier | [dataplatform.cloud.ibm.com](https://dataplatform.cloud.ibm.com) |
 
 ---
 
@@ -87,10 +88,15 @@ source .venv/bin/activate
 # 3. Install all dependencies
 pip install -r requirements.txt
 
-# 4. Set your Groq API key (required for LLM summaries)
+# 4. Set your IBM Cloud credentials
 #    Copy .env.example to .env and fill in — never commit .env
 cp .env.example .env
-# Then set: GROQ_API_KEY=gsk_...
+# Set:
+# WATSONX_API_KEY=your_ibm_cloud_api_key
+# WATSONX_PROJECT_ID=your_watsonx_project_id_uuid
+
+# 5. Verify your IBM connection
+python test_ibm_connection.py
 ```
 
 ---
@@ -100,13 +106,13 @@ cp .env.example .env
 ### Start the backend (Terminal 1)
 
 ```bash
-uvicorn backend.main:app --reload --port 8000
+python -m uvicorn backend.main:app --reload --port 8000
 ```
 
 ### Start the frontend (Terminal 2)
 
 ```bash
-streamlit run frontend/app.py
+python -m streamlit run frontend/app.py
 ```
 
 Then open **http://localhost:8501** in your browser.
@@ -138,12 +144,19 @@ The demo repo (`TaskFlow API`) was designed to trigger every subagent:
 Copy `.env.example` to `.env` (never commit `.env`):
 
 ```bash
-# Required: Groq API key for LLM summaries
-# Get a free key at: https://console.groq.com
-GROQ_API_KEY=gsk_your_key_here
+# Required: IBM Cloud API key (or alias IBM_API_KEY)
+# Create at: https://cloud.ibm.com/iam/apikeys
+WATSONX_API_KEY=your_ibm_cloud_api_key_here
 
-# Optional: model override (default: llama3-8b-8192)
-# GROQ_MODEL_ID=llama-3.1-70b-versatile
+# Required: watsonx.ai Project ID (UUID)
+# Found under your watsonx project > Manage > General
+WATSONX_PROJECT_ID=your_project_id_uuid_here
+
+# Optional: Instance URL (default: Dallas us-south)
+# WATSONX_URL=https://us-south.ml.cloud.ibm.com
+
+# Optional: Model ID override (default: ibm/granite-3-8b-instruct)
+# WATSONX_MODEL_ID=ibm/granite-3-8b-instruct
 
 # Optional: GitHub Personal Access Token for fetching linked issues/PRs
 # GITHUB_TOKEN=ghp_your_token_here
@@ -230,9 +243,10 @@ IBM Bob (AI developer assistant) was used throughout this project:
 | Problem | Fix |
 |---------|-----|
 | `❌ Cannot connect to backend` | Run `uvicorn backend.main:app --reload --port 8000` |
-| `⚠️ Groq not configured` | Set `GROQ_API_KEY` in `.env` |
-| `⚠️ Groq returned HTTP 401` | Invalid API key — check `GROQ_API_KEY` |
-| Generation takes too long | Switch to `GROQ_MODEL_ID=llama3-8b-8192` (faster) |
+| `⚠️ watsonx.ai not configured` | Set `WATSONX_API_KEY` & `WATSONX_PROJECT_ID` in `.env` or Streamlit sidebar |
+| `⚠️ watsonx.ai returned HTTP 401` | Invalid IBM Cloud API key — verify key at cloud.ibm.com |
+| `⚠️ watsonx.ai returned HTTP 404` | Check `WATSONX_PROJECT_ID` and ensure the project exists in watsonx |
+| Check IBM credentials | Run `python test_ibm_connection.py` for diagnostic test |
 | GitHub issues not fetching | Add `GITHUB_TOKEN` to `.env`, or it gracefully falls back |
 | `InvalidGitRepositoryError` | Path must point to a directory containing a `.git` folder |
 

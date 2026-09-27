@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: devhandoff
+    env: docker
+    plan: free
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: WATSONX_API_KEY
+        sync: false
+      - key: WATSONX_PROJECT_ID
+        sync: false
+      - key: WATSONX_URL
+        value: https://eu-de.ml.cloud.ibm.com

@@ -16,6 +16,7 @@ build/
 .env
 .env.*
 *.env
+!.env.example
 
 # IBM Cloud / API credentials — never commit these
 ibm_credentials.env
@@ -42,7 +43,7 @@ Thumbs.db
 *.swp
 
 # Nested demo repo git folder
-demo-repo/.git/
+demo-repo/
 
 # Cloned remote repos cache
 cloned_repos/

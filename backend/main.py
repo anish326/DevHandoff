@@ -149,6 +149,10 @@ def _validated_repo_path(raw: str) -> str:
         raise ValueError(f"Directory traversal detected in repo_path '{raw}'")
     try:
         resolved = _Path(cleaned).resolve()
+        if not resolved.is_dir():
+            root_relative = (_Path(__file__).resolve().parent.parent / cleaned).resolve()
+            if root_relative.is_dir():
+                resolved = root_relative
     except Exception as exc:
         raise ValueError(f"Invalid repo_path: {exc}") from exc
     if not resolved.is_dir():
@@ -243,6 +247,8 @@ class HandoffRequest(BaseModel):
         description="Absolute path to the local git repository",
     )
     branch: str = Field(default="main", max_length=255)
+    watsonx_api_key: str | None = Field(default=None, description="Optional IBM Cloud API key override")
+    watsonx_project_id: str | None = Field(default=None, description="Optional watsonx Project ID override")
 
     @field_validator("repo_path")
     @classmethod
@@ -273,6 +279,8 @@ class RegenerateRequest(BaseModel):
     section: str = Field(..., description="Section name to regenerate (must be one of the 11 sections)")
     repo_path: str = Field(..., max_length=500)
     branch: str = Field(default="main", max_length=255)
+    watsonx_api_key: str | None = Field(default=None, description="Optional IBM Cloud API key override")
+    watsonx_project_id: str | None = Field(default=None, description="Optional watsonx Project ID override")
     # Cached subagent summaries — client sends back what it received to avoid re-running agents
     inflight_summary: str = ""
     archaeologist_summary: str = ""
@@ -320,7 +328,12 @@ def _unwrap_summary(val: Any, label: str) -> str:
     return val  # type: ignore[return-value]
 
 
-async def orchestrate(repo_path: str, branch: str) -> HandoffResponse:
+async def orchestrate(
+    repo_path: str,
+    branch: str,
+    watsonx_api_key: str | None = None,
+    watsonx_project_id: str | None = None,
+) -> HandoffResponse:
     """
     Main orchestration function.
 
@@ -389,9 +402,9 @@ async def orchestrate(repo_path: str, branch: str) -> HandoffResponse:
     _drift_err = _error_summary(drift_raw, "Doc/Reality Drift Analyzer")
 
     _summaries = await asyncio.gather(
-        _const(_inflight_err) if _inflight_err else llm_client.summarize_inflight(inflight_raw),
-        _const(_arch_err) if _arch_err else llm_client.summarize_archaeologist(arch_raw),
-        _const(_drift_err) if _drift_err else llm_client.summarize_drift(drift_raw),
+        _const(_inflight_err) if _inflight_err else llm_client.summarize_inflight(inflight_raw, api_key=watsonx_api_key, project_id=watsonx_project_id),
+        _const(_arch_err) if _arch_err else llm_client.summarize_archaeologist(arch_raw, api_key=watsonx_api_key, project_id=watsonx_project_id),
+        _const(_drift_err) if _drift_err else llm_client.summarize_drift(drift_raw, api_key=watsonx_api_key, project_id=watsonx_project_id),
         return_exceptions=True,
     )
 
@@ -411,6 +424,8 @@ async def orchestrate(repo_path: str, branch: str) -> HandoffResponse:
             inflight_raw=inflight_raw,
             archaeologist_raw=arch_raw,
             drift_raw=drift_raw,
+            api_key=watsonx_api_key,
+            project_id=watsonx_project_id,
         )
     except Exception:
         logger.exception("Synthesizer failed — returning raw summaries as fallback")
@@ -498,7 +513,12 @@ async def generate_handoff(
     Protected by X-API-Key header when DEVHANDOFF_API_KEY env var is set.
     """
     try:
-        return await orchestrate(body.repo_path, body.branch)
+        return await orchestrate(
+            body.repo_path,
+            body.branch,
+            watsonx_api_key=body.watsonx_api_key,
+            watsonx_project_id=body.watsonx_project_id,
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -534,7 +554,12 @@ async def regenerate_section(
 
     if not any([inflight_summary, archaeologist_summary, drift_summary]):
         # No cache — need to re-run full orchestration
-        full = await orchestrate(body.repo_path, body.branch)
+        full = await orchestrate(
+            body.repo_path,
+            body.branch,
+            watsonx_api_key=body.watsonx_api_key,
+            watsonx_project_id=body.watsonx_project_id,
+        )
         return {"section": body.section, "markdown": full.markdown}
 
     try:
@@ -548,6 +573,8 @@ async def regenerate_section(
             inflight_raw=inflight_raw,
             archaeologist_raw=archaeologist_raw,
             drift_raw=drift_raw,
+            api_key=body.watsonx_api_key,
+            project_id=body.watsonx_project_id,
         )
     except Exception as exc:
         logger.exception("Section resynthesis failed for '%s'", body.section)

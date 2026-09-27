@@ -148,7 +148,7 @@ def _build_deterministic_markdown(
     base_name = os.path.basename(os.path.abspath(repo_path))
 
     sections = [
-        f"## Context\n\n**Repository**: `{base_name}`  \n**Branch**: `{branch}`  \n**Local Path**: `{repo_path}`  \n\n*ℹ️ Note: Synthesized directly from subagent heuristics (LLM unavailable). Set `GROQ_API_KEY` in `.env` to enable full AI synthesis.*",
+        f"## Context\n\n**Repository**: `{base_name}`  \n**Branch**: `{branch}`  \n**Local Path**: `{repo_path}`  \n\n*ℹ️ Note: Synthesized directly from subagent heuristics (LLM unavailable). Set `WATSONX_API_KEY` and `WATSONX_PROJECT_ID` in `.env` to enable full AI synthesis.*",
         "## What Changed\n\n" + ("\n".join(f"- `{u.get('file')}` ({u.get('status')})" for u in uncommitted[:15]) if uncommitted else "Working directory clean; tracking commits on this branch."),
         "## Why\n\n" + ("\n".join(f"- #{i.get('number')}: {i.get('title')}" for i in issues[:10]) if issues else "No linked GitHub issues or pull requests explicitly tied to this branch."),
         "## Current Implementation\n\n" + ("\n".join(f"- `{f.get('file')}`: {len(f.get('recent_commits', []))} tracked commit(s)" for f in files[:10]) if files else "Active codebase is tracking current branch HEAD."),
@@ -158,7 +158,7 @@ def _build_deterministic_markdown(
         "## Dependencies\n\n- Detected project configuration files (e.g. `requirements.txt`, `package.json`, environment definitions).",
         f"## Tests to Run\n\n```bash\npytest\n```\n**Status**: {tests.get('status', 'not run')} ({tests.get('passed', 0)} passed, {tests.get('failed', 0)} failed)",
         "## Risks\n\n" + (f"- {len(uncommitted)} uncommitted file(s) risk conflict if not committed.\n" if uncommitted else "- Low working-tree risk.\n") + (f"- {len(drift_items)} documentation/reality drift point(s) detected.\n" if drift_items else ""),
-        "## Recommended Next Actions\n\n1. Review recent commits and test suite status.\n2. Resolve open TODO items and drift points identified.\n3. For full AI synthesis: set `GROQ_API_KEY` in `.env`."
+        "## Recommended Next Actions\n\n1. Review recent commits and test suite status.\n2. Resolve open TODO items and drift points identified.\n3. For full AI synthesis: set `WATSONX_API_KEY` and `WATSONX_PROJECT_ID` in `.env`."
     ]
 
     return "\n\n---\n\n".join(sections)
@@ -173,6 +173,8 @@ async def synthesize(
     inflight_raw: dict,
     archaeologist_raw: dict,
     drift_raw: dict,
+    api_key: str | None = None,
+    project_id: str | None = None,
 ) -> str:
     """
     Synthesizer Agent — calls the LLM with all three subagent outputs and
@@ -190,7 +192,7 @@ async def synthesize(
         drift_raw=drift_raw,
     )
     logger.info("Running Synthesizer Agent for repo=%s branch=%s", repo_path, branch)
-    markdown = await generate(prompt)
+    markdown = await generate(prompt, api_key=api_key, project_id=project_id)
     if _llm_failed(markdown):
         return _build_deterministic_markdown(
             repo_path=repo_path,
@@ -215,6 +217,8 @@ async def resynthesize_section(
     inflight_raw: dict,
     archaeologist_raw: dict,
     drift_raw: dict,
+    api_key: str | None = None,
+    project_id: str | None = None,
 ) -> str:
     """
     Re-run synthesis for a single section only.
@@ -246,7 +250,7 @@ Branch: {branch}
 Write 3-8 concrete, specific sentences or bullet points for the ## {section_name} section only.
 Do not include any other sections.
 """
-    content = await generate(prompt)
+    content = await generate(prompt, api_key=api_key, project_id=project_id)
     if _llm_failed(content):
         full_doc = _build_deterministic_markdown(
             repo_path=repo_path,
@@ -265,6 +269,6 @@ Do not include any other sections.
         return (
             f"## {section_name}\n\n"
             "⚠️ LLM unavailable. This section could not be synthesized. "
-            "Set `GROQ_API_KEY` in `.env` and regenerate."
+            "Set `WATSONX_API_KEY` and `WATSONX_PROJECT_ID` in `.env` and regenerate."
         )
     return f"## {section_name}\n\n{content}"
