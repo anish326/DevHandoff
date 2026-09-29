@@ -37,8 +37,36 @@ _API_KEY: str | None = os.getenv("DEVHANDOFF_API_KEY") or None
 REQUEST_TIMEOUT = 600  # seconds
 
 
+def _extract_secrets_map() -> dict[str, str]:
+    """Recursively extract key-value pairs from st.secrets."""
+    out: dict[str, str] = {}
+    try:
+        if hasattr(st, "secrets"):
+            def _walk(obj: Any) -> None:
+                if isinstance(obj, dict) or hasattr(obj, "items"):
+                    for k, v in obj.items():
+                        if isinstance(v, str):
+                            out[str(k)] = v
+                            out[str(k).upper()] = v
+                        elif isinstance(v, (dict, object)) and hasattr(v, "items"):
+                            _walk(v)
+            _walk(st.secrets)
+    except Exception:
+        pass
+    return out
+
+
 def _ensure_backend_running() -> None:
     """Auto-start FastAPI backend in background if running on cloud platforms (e.g. Streamlit Cloud)."""
+    root_dir = Path(__file__).resolve().parent.parent
+    sub_env = os.environ.copy()
+    sub_env["PYTHONPATH"] = str(root_dir)
+
+    sec_map = _extract_secrets_map()
+    for k, v in sec_map.items():
+        sub_env[k] = v
+        os.environ[k] = v
+
     try:
         r = httpx.get(f"{BACKEND_URL}/health", timeout=1.2)
         if r.status_code == 200:
@@ -48,15 +76,6 @@ def _ensure_backend_running() -> None:
     import subprocess
     import sys
     _logger.info("Auto-launching DevHandoff backend daemon...")
-    root_dir = Path(__file__).resolve().parent.parent
-    sub_env = os.environ.copy()
-    sub_env["PYTHONPATH"] = str(root_dir)
-    try:
-        for k, v in st.secrets.items():
-            if isinstance(v, str):
-                sub_env[k] = v
-    except Exception:
-        pass
     try:
         subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "backend.main:app", "--port", "8000", "--host", "127.0.0.1"],
@@ -852,11 +871,17 @@ h1, h2, h3, h4 { font-family: Outfit, sans-serif !important; color: #f8fafc !imp
 # ---------------------------------------------------------------------------
 
 def _get_initial_env_val(keys: list[str]) -> str:
-    """Read environment variable or fallback to .env directly."""
+    """Read environment variable, st.secrets, or fallback to .env directly."""
     for k in keys:
         val = os.getenv(k, "").strip()
         if val:
             return val
+    sec_map = _extract_secrets_map()
+    for k in keys:
+        if k in sec_map and sec_map[k].strip():
+            return sec_map[k].strip()
+        if k.upper() in sec_map and sec_map[k.upper()].strip():
+            return sec_map[k.upper()].strip()
     try:
         env_path = Path(__file__).resolve().parent.parent / ".env"
         if env_path.is_file():
@@ -887,6 +912,7 @@ def _init_state() -> None:
         "entered_app": False,
         "watsonx_api_key": _get_initial_env_val(["WATSONX_API_KEY", "IBM_API_KEY", "IBM_CLOUD_API_KEY"]),
         "watsonx_project_id": _get_initial_env_val(["WATSONX_PROJECT_ID", "IBM_PROJECT_ID"]),
+        "watsonx_url": _get_initial_env_val(["WATSONX_URL", "IBM_URL"]) or "https://eu-de.ml.cloud.ibm.com",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -926,12 +952,15 @@ def call_generate_handoff(
     branch: str,
     watsonx_api_key: str | None = None,
     watsonx_project_id: str | None = None,
+    watsonx_url: str | None = None,
 ) -> dict:
     payload: dict[str, Any] = {"repo_path": repo_path, "branch": branch}
     if watsonx_api_key:
         payload["watsonx_api_key"] = watsonx_api_key
     if watsonx_project_id:
         payload["watsonx_project_id"] = watsonx_project_id
+    if watsonx_url:
+        payload["watsonx_url"] = watsonx_url
 
     resp = httpx.post(
         f"{BACKEND_URL}/generate-handoff",
@@ -951,6 +980,7 @@ def call_regenerate_section(
     raw: dict,
     watsonx_api_key: str | None = None,
     watsonx_project_id: str | None = None,
+    watsonx_url: str | None = None,
 ) -> str:
     payload: dict[str, Any] = {
         "section": section,
@@ -967,6 +997,8 @@ def call_regenerate_section(
         payload["watsonx_api_key"] = watsonx_api_key
     if watsonx_project_id:
         payload["watsonx_project_id"] = watsonx_project_id
+    if watsonx_url:
+        payload["watsonx_url"] = watsonx_url
 
     resp = httpx.post(
         f"{BACKEND_URL}/regenerate-section",
@@ -1213,6 +1245,30 @@ def main() -> None:
                     value=st.session_state["branch_input"],
                 )
 
+            has_creds = bool(st.session_state.get("watsonx_api_key") and st.session_state.get("watsonx_project_id"))
+            exp_label = "⚙️ IBM watsonx.ai AI Settings (Connected ✅)" if has_creds else "⚙️ IBM watsonx.ai AI Settings (API Key & Project ID)"
+            with st.expander(exp_label, expanded=not has_creds):
+                st.caption("Provide IBM watsonx.ai credentials below, or configure them in Streamlit Cloud Secrets / .env for full LLM synthesis.")
+                c_key, c_proj = st.columns(2)
+                with c_key:
+                    wx_key_input = st.text_input(
+                        "IBM Cloud API Key",
+                        value=st.session_state.get("watsonx_api_key", ""),
+                        type="password",
+                        help="Your IBM Cloud API key",
+                    )
+                with c_proj:
+                    wx_proj_input = st.text_input(
+                        "watsonx.ai Project ID",
+                        value=st.session_state.get("watsonx_project_id", ""),
+                        help="Your watsonx.ai project UUID",
+                    )
+                wx_url_input = st.text_input(
+                    "watsonx.ai Regional Endpoint URL",
+                    value=st.session_state.get("watsonx_url", "https://eu-de.ml.cloud.ibm.com"),
+                    help="e.g. https://eu-de.ml.cloud.ibm.com (Frankfurt) or https://us-south.ml.cloud.ibm.com (Dallas)",
+                )
+
             launch_clicked = st.form_submit_button(
                 "⚡ INITIATE MULTI-AGENT ANALYSIS",
                 use_container_width=True,
@@ -1224,6 +1280,14 @@ def main() -> None:
     # Generation Handler
     # -----------------------------------------------------------------------
     if launch_clicked and repo_path:
+        # Save credentials entered in form
+        if wx_key_input.strip():
+            st.session_state["watsonx_api_key"] = wx_key_input.strip()
+        if wx_proj_input.strip():
+            st.session_state["watsonx_project_id"] = wx_proj_input.strip()
+        if wx_url_input.strip():
+            st.session_state["watsonx_url"] = wx_url_input.strip()
+
         st.session_state["generating"] = True
         st.session_state["handoff_markdown"] = ""
         st.session_state["subagent_statuses"] = []
@@ -1254,6 +1318,7 @@ def main() -> None:
                 branch=branch,
                 watsonx_api_key=st.session_state.get("watsonx_api_key") or None,
                 watsonx_project_id=st.session_state.get("watsonx_project_id") or None,
+                watsonx_url=st.session_state.get("watsonx_url") or None,
             )
             elapsed = time.perf_counter() - t0
 
@@ -1366,6 +1431,7 @@ def main() -> None:
                                     raw=st.session_state["raw_data"],
                                     watsonx_api_key=st.session_state.get("watsonx_api_key") or None,
                                     watsonx_project_id=st.session_state.get("watsonx_project_id") or None,
+                                    watsonx_url=st.session_state.get("watsonx_url") or None,
                                 )
                                 if new_content.startswith(f"## {section_name}"):
                                     new_content = new_content[len(f"## {section_name}"):].strip()

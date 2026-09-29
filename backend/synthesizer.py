@@ -175,6 +175,7 @@ async def synthesize(
     drift_raw: dict,
     api_key: str | None = None,
     project_id: str | None = None,
+    url: str | None = None,
 ) -> str:
     """
     Synthesizer Agent — calls the LLM with all three subagent outputs and
@@ -192,7 +193,7 @@ async def synthesize(
         drift_raw=drift_raw,
     )
     logger.info("Running Synthesizer Agent for repo=%s branch=%s", repo_path, branch)
-    markdown = await generate(prompt, api_key=api_key, project_id=project_id)
+    markdown = await generate(prompt, api_key=api_key, project_id=project_id, url=url)
     if _llm_failed(markdown):
         return _build_deterministic_markdown(
             repo_path=repo_path,
@@ -219,6 +220,7 @@ async def resynthesize_section(
     drift_raw: dict,
     api_key: str | None = None,
     project_id: str | None = None,
+    url: str | None = None,
 ) -> str:
     """
     Re-run synthesis for a single section only.
@@ -250,7 +252,7 @@ Branch: {branch}
 Write 3-8 concrete, specific sentences or bullet points for the ## {section_name} section only.
 Do not include any other sections.
 """
-    content = await generate(prompt, api_key=api_key, project_id=project_id)
+    content = await generate(prompt, api_key=api_key, project_id=project_id, url=url)
     if _llm_failed(content):
         full_doc = _build_deterministic_markdown(
             repo_path=repo_path,

@@ -249,6 +249,7 @@ class HandoffRequest(BaseModel):
     branch: str = Field(default="main", max_length=255)
     watsonx_api_key: str | None = Field(default=None, description="Optional IBM Cloud API key override")
     watsonx_project_id: str | None = Field(default=None, description="Optional watsonx Project ID override")
+    watsonx_url: str | None = Field(default=None, description="Optional watsonx base URL override")
 
     @field_validator("repo_path")
     @classmethod
@@ -281,6 +282,7 @@ class RegenerateRequest(BaseModel):
     branch: str = Field(default="main", max_length=255)
     watsonx_api_key: str | None = Field(default=None, description="Optional IBM Cloud API key override")
     watsonx_project_id: str | None = Field(default=None, description="Optional watsonx Project ID override")
+    watsonx_url: str | None = Field(default=None, description="Optional watsonx base URL override")
     # Cached subagent summaries — client sends back what it received to avoid re-running agents
     inflight_summary: str = ""
     archaeologist_summary: str = ""
@@ -333,6 +335,7 @@ async def orchestrate(
     branch: str,
     watsonx_api_key: str | None = None,
     watsonx_project_id: str | None = None,
+    watsonx_url: str | None = None,
 ) -> HandoffResponse:
     """
     Main orchestration function.
@@ -402,9 +405,9 @@ async def orchestrate(
     _drift_err = _error_summary(drift_raw, "Doc/Reality Drift Analyzer")
 
     _summaries = await asyncio.gather(
-        _const(_inflight_err) if _inflight_err else llm_client.summarize_inflight(inflight_raw, api_key=watsonx_api_key, project_id=watsonx_project_id),
-        _const(_arch_err) if _arch_err else llm_client.summarize_archaeologist(arch_raw, api_key=watsonx_api_key, project_id=watsonx_project_id),
-        _const(_drift_err) if _drift_err else llm_client.summarize_drift(drift_raw, api_key=watsonx_api_key, project_id=watsonx_project_id),
+        _const(_inflight_err) if _inflight_err else llm_client.summarize_inflight(inflight_raw, api_key=watsonx_api_key, project_id=watsonx_project_id, url=watsonx_url),
+        _const(_arch_err) if _arch_err else llm_client.summarize_archaeologist(arch_raw, api_key=watsonx_api_key, project_id=watsonx_project_id, url=watsonx_url),
+        _const(_drift_err) if _drift_err else llm_client.summarize_drift(drift_raw, api_key=watsonx_api_key, project_id=watsonx_project_id, url=watsonx_url),
         return_exceptions=True,
     )
 
@@ -426,6 +429,7 @@ async def orchestrate(
             drift_raw=drift_raw,
             api_key=watsonx_api_key,
             project_id=watsonx_project_id,
+            url=watsonx_url,
         )
     except Exception:
         logger.exception("Synthesizer failed — returning raw summaries as fallback")
@@ -518,6 +522,7 @@ async def generate_handoff(
             body.branch,
             watsonx_api_key=body.watsonx_api_key,
             watsonx_project_id=body.watsonx_project_id,
+            watsonx_url=body.watsonx_url,
         )
     except HTTPException:
         raise
@@ -559,6 +564,7 @@ async def regenerate_section(
             body.branch,
             watsonx_api_key=body.watsonx_api_key,
             watsonx_project_id=body.watsonx_project_id,
+            watsonx_url=body.watsonx_url,
         )
         return {"section": body.section, "markdown": full.markdown}
 
@@ -575,6 +581,7 @@ async def regenerate_section(
             drift_raw=drift_raw,
             api_key=body.watsonx_api_key,
             project_id=body.watsonx_project_id,
+            url=body.watsonx_url,
         )
     except Exception as exc:
         logger.exception("Section resynthesis failed for '%s'", body.section)

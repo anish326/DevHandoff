@@ -275,7 +275,7 @@ def _json_snippet(data: Any, max_chars: int = 4000) -> str:
 # Subagent-specific summarizers
 # ---------------------------------------------------------------------------
 
-async def summarize_inflight(data: dict, api_key: str | None = None, project_id: str | None = None) -> str:
+async def summarize_inflight(data: dict, api_key: str | None = None, project_id: str | None = None, url: str | None = None) -> str:
     """Turn Subagent 1's raw JSON into 2-4 plain-English sentences."""
     prompt = f"""You are a senior developer reading a structured JSON report about the
 current in-flight state of a code repository.  Write 2-4 plain-English sentences
@@ -288,7 +288,7 @@ Be concise and factual.  Here is the JSON data:
 
 {_json_snippet(data)}
 """
-    res = await generate(prompt, max_tokens=300, api_key=api_key, project_id=project_id)
+    res = await generate(prompt, max_tokens=300, api_key=api_key, project_id=project_id, url=url)
     if _llm_failed(res):
         uncommitted = len(data.get("uncommitted_changes", []))
         issues = len(data.get("linked_issues", []))
@@ -309,7 +309,7 @@ Be concise and factual.  Here is the JSON data:
     return res
 
 
-async def summarize_archaeologist(data: dict, api_key: str | None = None, project_id: str | None = None) -> str:
+async def summarize_archaeologist(data: dict, api_key: str | None = None, project_id: str | None = None, url: str | None = None) -> str:
     """Turn Subagent 2's raw JSON into 2-4 plain-English sentences."""
     prompt = f"""You are a senior developer reading a structured JSON report containing
 git history data for files recently modified in a repository.  Write 2-4 plain-English
@@ -322,7 +322,7 @@ Be concise and factual.  Here is the JSON data:
 
 {_json_snippet(data)}
 """
-    res = await generate(prompt, max_tokens=300, api_key=api_key, project_id=project_id)
+    res = await generate(prompt, max_tokens=300, api_key=api_key, project_id=project_id, url=url)
     if _llm_failed(res):
         files = len(data.get("files", []))
         commits_count = sum(len(f.get("recent_commits", [])) for f in data.get("files", []))
@@ -333,7 +333,7 @@ Be concise and factual.  Here is the JSON data:
     return res
 
 
-async def summarize_drift(data: dict, api_key: str | None = None, project_id: str | None = None) -> str:
+async def summarize_drift(data: dict, api_key: str | None = None, project_id: str | None = None, url: str | None = None) -> str:
     """Turn Subagent 3's raw JSON into 2-4 plain-English sentences."""
     prompt = f"""You are a senior developer reading a structured JSON report about
 documentation drift and technical debt in a codebase.  Write 2-4 plain-English
@@ -346,7 +346,7 @@ Be concise and factual.  Here is the JSON data:
 
 {_json_snippet(data)}
 """
-    res = await generate(prompt, max_tokens=300, api_key=api_key, project_id=project_id)
+    res = await generate(prompt, max_tokens=300, api_key=api_key, project_id=project_id, url=url)
     if _llm_failed(res):
         todos = len(data.get("todos", []))
         drift_items = len(data.get("drift_items", []))
