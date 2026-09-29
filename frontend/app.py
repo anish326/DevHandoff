@@ -48,9 +48,14 @@ def _ensure_backend_running() -> None:
     import subprocess
     import sys
     _logger.info("Auto-launching DevHandoff backend daemon...")
+    root_dir = Path(__file__).resolve().parent.parent
+    sub_env = os.environ.copy()
+    sub_env["PYTHONPATH"] = str(root_dir)
     try:
         subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "backend.main:app", "--port", "8000", "--host", "127.0.0.1"],
+            cwd=str(root_dir),
+            env=sub_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
