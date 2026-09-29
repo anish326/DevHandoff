@@ -52,6 +52,12 @@ def _ensure_backend_running() -> None:
     sub_env = os.environ.copy()
     sub_env["PYTHONPATH"] = str(root_dir)
     try:
+        for k, v in st.secrets.items():
+            if isinstance(v, str):
+                sub_env[k] = v
+    except Exception:
+        pass
+    try:
         subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "backend.main:app", "--port", "8000", "--host", "127.0.0.1"],
             cwd=str(root_dir),
