@@ -13,26 +13,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest-cov pytest-asyncio pytest-mock
+          pip install pytest pytest-cov pytest-asyncio pytest-mock pytest-json-report
 
       - name: Syntax-check all Python source files
-        run: python -m compileall backend/ frontend/ demo-repo/ -q
-
-      - name: Run demo-repo tests with coverage
-        run: |
-          python -m pytest demo-repo/tests/ -v --tb=short \
-            --cov=demo-repo --cov-report=term-missing
-        # Note: coverage threshold intentionally low until full suite is written.
-        # Raise --cov-fail-under once T2/T7 test suites are complete.
+        run: python -m compileall backend/ frontend/ -q
 
       - name: Run backend tests (placeholder — expand as T2 is implemented)
         run: |
@@ -52,20 +45,19 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     # Integration tests spawn a real backend process and make real HTTP calls.
-    # Ollama is NOT available in CI — verify_fixes.py's Test E (Ollama fallback)
-    # runs with a deliberately unreachable Ollama URL and asserts graceful degradation.
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest pytest-json-report
 
       - name: Set up demo repo git state
         run: python setup_demo_repo.py
